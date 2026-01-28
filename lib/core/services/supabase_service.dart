@@ -124,6 +124,7 @@ class SupabaseService {
           'has_purchased': false,
           'wallet_balance': 0.0,
           'stamps_count': 0,
+          'referral_count': 0,
         });
         return true;
       }
@@ -160,19 +161,12 @@ class SupabaseService {
     try {
       final profile = await _client
           .from('profiles')
-          .select('referral_code, stamps_count, loyalty_redemption_code, is_redeemed')
+          .select('referral_code, stamps_count, loyalty_redemption_code, is_redeemed, referral_count')
           .eq('id', userId)
           .single();
 
-      // FIXED: In current Supabase Flutter versions, count is a named parameter in select()
-      final referralResponse = await _client
-          .from('profiles')
-          .select('id') // Just select the ID
-          .eq('referred_by', userId)
-          .eq('has_purchased', true)
-          .count(CountOption.exact); // Use .count() after filters or as a modifier
-
-      final int referralCount = referralResponse.count ?? 0;
+      // Use referral_count from profiles table instead of counting referrals
+      final int referralCount = profile['referral_count'] ?? 0;
 
       return {
         ...profile,

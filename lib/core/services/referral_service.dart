@@ -69,19 +69,26 @@ class ReferralService {
   // ==========================================
 
   /// Saves specifically to 'redemption_code'
-  Future<String?> generateReferralRewardCode() async {
+  Future<String?> generateReferralRewardCodeForUser(String userId) async {
     try {
-      final user = Supabase.instance.client.auth.currentUser;
-      if (user == null) return null;
-
       final String code = "REF-${generateRandomCode()}";
       await Supabase.instance.client.from('profiles').update({
         'redemption_code': code,
         'referral_reward_claimed': true,
-      }).eq('id', user.id);
+      }).eq('id', userId);
 
       return code;
-    } catch (e) { return null; }
+    } catch (e) { 
+      debugPrint("Error generating referral reward code: $e");
+      return null; 
+    }
+  }
+
+  /// Saves specifically to 'redemption_code' for current user
+  Future<String?> generateReferralRewardCode() async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) return null;
+    return await generateReferralRewardCodeForUser(user.id);
   }
 
   // ==========================================
@@ -126,22 +133,112 @@ class ReferralService {
     try {
       final referrerId = await _supabaseService.getUserIdByReferralCode(friendReferralCode.trim().toUpperCase());
       if (referrerId != null) {
-        await _supabaseService.updateReferralLink(newUserId: userId, referrerId: referrerId);
+        // Update the new user's profile with referrer
+        await Supabase.instance.client
+            .from('profiles')
+            .update({'referred_by': referrerId})
+            .eq('id', userId);
+        
+        // Create referral record
+        await Supabase.instance.client
+            .from('referrals')
+            .insert({
+              'referrer_id': referrerId,
+              'referee_id': userId,
+              'has_purchased': false,
+            });
       }
-    } catch (e) { debugPrint("Error linking referral: $e"); }
+    } catch (e) { 
+      debugPrint("Error linking referral: $e"); 
+    }
   }
 
   Future<void> recordFirstPurchase() async {
     final user = Supabase.instance.client.auth.currentUser;
-    if (user != null) await _supabaseService.markReferralAsCompleted(user.id);
+    if (user == null) return;
+    
+    try {
+      // Mark user as having purchased
+      await Supabase.instance.client
+          .from('profiles')
+          .update({'has_purchased': true})
+          .eq('id', user.id);
+      
+      // Update referral record if user was referred
+      await Supabase.instance.client
+          .from('referrals')
+          .update({'has_purchased': true})
+          .eq('referee_id', user.id);
+      
+      // Check if user was referred and increment referrer's count
+      final referralData = await Supabase.instance.client
+          .from('profiles')
+          .select('referred_by')
+          .eq('id', user.id)
+          .single();
+      
+      if (referralData['referred_by'] != null) {
+        final referrerId = referralData['referred_by'];
+        
+        // Increment referrer's referral count (same as stamps)
+        await incrementReferralCount(referrerId);
+        
+        // Check if referrer should get reward (10 referrals)
+        final referrerProfile = await Supabase.instance.client
+            .from('profiles')
+            .select('referral_count')
+            .eq('id', referrerId)
+            .single();
+        
+        final int referralCount = referrerProfile['referral_count'] ?? 0;
+        
+        // If this is the 10th referral, generate reward code
+        if (referralCount >= 10) {
+          await generateReferralRewardCodeForUser(referrerId);
+        }
+      }
+    } catch (e) {
+      debugPrint("Error recording first purchase: $e");
+    }
+  }
+
+  Future<void> incrementReferralCount(String userId) async {
+    try {
+      final data = await Supabase.instance.client
+          .from('profiles')
+          .select('referral_count')
+          .eq('id', userId)
+          .single();
+
+      int currentCount = data['referral_count'] ?? 0;
+      
+      if (currentCount < 10) {
+        await Supabase.instance.client
+            .from('profiles')
+            .update({'referral_count': currentCount + 1})
+            .eq('id', userId);
+      }
+    } catch (e) {
+      debugPrint("Error incrementing referral count: $e");
+    }
   }
 
   Future<int> getReferralCount() async {
     try {
       final user = Supabase.instance.client.auth.currentUser;
       if (user == null) return 0;
-      final response = await Supabase.instance.client.rpc('get_referral_count', params: {'user_id': user.id});
-      return response as int;
-    } catch (e) { return 0; }
+      
+      // Use referral_count from profiles table (same as stamps)
+      final data = await Supabase.instance.client
+          .from('profiles')
+          .select('referral_count')
+          .eq('id', user.id)
+          .single();
+      
+      return data['referral_count'] ?? 0;
+    } catch (e) { 
+      debugPrint("Error getting referral count: $e");
+      return 0; 
+    }
   }
 }

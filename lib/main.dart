@@ -533,8 +533,8 @@ final success = (user != null); // If we got a user, it was a success
                       controller: _referralController,
                       cursorColor: theme.colorScheme.primary,
                       decoration: InputDecoration(
-                        labelText: "Referral Email (Optional)",
-                        helperText: "Enter a friend's email to get started!",
+                        labelText: "Referral Code (Optional)",
+                        helperText: "Enter a friend's referral code to get started!",
                         prefixIcon: Icon(
                           Icons.card_giftcard,
                           color: theme.colorScheme.primary,
@@ -1325,6 +1325,123 @@ class _RewardsPageState extends State<RewardsPage> {
     );
   }
 
+  /// Show referral reward code (generate new if needed, show existing if available)
+  Future<void> _showReferralRewardCode(String userId) async {
+    try {
+      // Check if user already has an active referral reward code
+      final profile = await Supabase.instance.client
+          .from('profiles')
+          .select('redemption_code, referral_count')
+          .eq('id', userId)
+          .single();
+
+      final String? existingCode = profile['redemption_code'];
+      final int referralCount = profile['referral_count'] ?? 0;
+      
+      if (existingCode != null) {
+        // Show existing code
+        _showReferralCodeDialog(existingCode, isNew: false);
+        return;
+      }
+
+      // Generate new code if user has 10+ referrals
+      if (referralCount >= 10) {
+        // Show loading dialog
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => const AlertDialog(
+            content: Row(
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(width: 20),
+                Text("Generating your reward code..."),
+              ],
+            ),
+          ),
+        );
+
+        // Generate new referral reward code
+        final String? referralRewardCode = await ReferralService().generateReferralRewardCode();
+
+        // Close loading dialog
+        if (mounted) Navigator.pop(context);
+
+        // Show new code
+        if (mounted && referralRewardCode != null) {
+          _showReferralCodeDialog(referralRewardCode, isNew: true);
+        }
+      } else {
+        // Not enough referrals
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("You need ${10 - referralCount} more referrals to earn a reward!"),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Error: $e"),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  void _showReferralCodeDialog(String code, {required bool isNew}) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(isNew ? "🎉 Referral Reward Generated!" : "🎁 Your Referral Reward"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              isNew ? "Show this code to claim your reward:" : "Your referral reward code:",
+              style: const TextStyle(fontSize: 16),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.green),
+              ),
+              child: Text(
+                code,
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 2,
+                  color: Colors.green,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              "Present this code at the counter to claim your referral reward!",
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 14),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Got it!"),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = Supabase.instance.client.auth.currentUser;
@@ -1356,9 +1473,12 @@ class _RewardsPageState extends State<RewardsPage> {
           final int stamps = data['stamps_count'] ?? 0;
           final int successfulReferrals = data['referral_count'] ?? 0;
           final String? loyaltyCode = data['loyalty_redemption_code'];
+          final String? referralRewardCode = data['redemption_code'];
           final bool isRedeemed = data['is_redeemed'] ?? true;
-          final bool hasActiveCode = loyaltyCode != null && isRedeemed == false;
-          final bool canGenerateCode = stamps >= 10 && !hasActiveCode;
+          final bool hasActiveLoyaltyCode = loyaltyCode != null && isRedeemed == false;
+          final bool hasActiveReferralCode = referralRewardCode != null;
+          final bool canGenerateLoyaltyCode = stamps >= 10 && !hasActiveLoyaltyCode;
+          final bool canGenerateReferralCode = successfulReferrals >= 10 && !hasActiveReferralCode;
           final double referralProgress = (successfulReferrals / 10).clamp(
             0.0,
             1.0,
@@ -1553,29 +1673,29 @@ class _RewardsPageState extends State<RewardsPage> {
                       ),
                       const SizedBox(height: 24),
                       GestureDetector(
-                        onTap: (canGenerateCode || hasActiveCode) ? () => _showRedemptionCode(user.id) : null,
+                        onTap: (canGenerateLoyaltyCode || hasActiveLoyaltyCode) ? () => _showRedemptionCode(user.id) : null,
                         child: Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 16,
                             vertical: 8,
                           ),
                           decoration: BoxDecoration(
-                            color: (canGenerateCode || hasActiveCode)
+                            color: (canGenerateLoyaltyCode || hasActiveLoyaltyCode)
                                 ? Colors.amber.withOpacity(0.2) 
                                 : Colors.amber.withOpacity(0.05),
                             borderRadius: BorderRadius.circular(20),
-                            border: (canGenerateCode || hasActiveCode)
+                            border: (canGenerateLoyaltyCode || hasActiveLoyaltyCode)
                                 ? Border.all(color: Colors.amber.withOpacity(0.5))
                                 : null,
                           ),
                           child: Text(
-                            hasActiveCode
+                            hasActiveLoyaltyCode
                                 ? "SHOW YOUR CODE"
-                                : canGenerateCode
+                                : canGenerateLoyaltyCode
                                     ? "GENERATE YOUR CODE"
                                     : "${10 - stamps} STAMPS REMAINING",
                             style: TextStyle(
-                              color: (canGenerateCode || hasActiveCode) ? Colors.amber : Colors.white38,
+                              color: (canGenerateLoyaltyCode || hasActiveLoyaltyCode) ? Colors.amber : Colors.white38,
                               fontSize: 10,
                               fontWeight: FontWeight.bold,
                               letterSpacing: 1,
@@ -1586,6 +1706,83 @@ class _RewardsPageState extends State<RewardsPage> {
                     ],
                   ),
                 ),
+
+                const SizedBox(height: 32),
+
+                // 2.5. REFERRAL REWARD SECTION
+                if (hasActiveReferralCode || canGenerateReferralCode) ...[
+                  Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          Colors.green.withOpacity(0.1),
+                          Colors.green.withOpacity(0.05),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(32),
+                      border: Border.all(color: Colors.green.withOpacity(0.2)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.card_giftcard, color: Colors.green, size: 24),
+                            const SizedBox(width: 12),
+                            Text(
+                              "REFERRAL REWARD",
+                              style: TextStyle(
+                                color: Colors.green,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          hasActiveReferralCode
+                              ? "You've earned a referral reward code!"
+                              : "You've earned a referral reward!",
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.9),
+                            fontSize: 14,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        GestureDetector(
+                          onTap: () => _showReferralRewardCode(user.id),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.green.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: Colors.green.withOpacity(0.5)),
+                            ),
+                            child: Text(
+                              hasActiveReferralCode
+                                  ? "SHOW REWARD CODE"
+                                  : "GENERATE REWARD CODE",
+                              style: const TextStyle(
+                                color: Colors.green,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 1,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                ],
 
                 const SizedBox(height: 32),
 
@@ -2345,17 +2542,18 @@ class _CartPageState extends State<CartPage> {
     double cartTotal = cart.total;
     final hasSufficientWalletFunds = walletBalance >= cartTotal;
 
-    // Show confirmation dialog for selected payment method
+    // Auto-default to Yoco if user selected wallet but has insufficient funds
     if (_selectedPaymentMethod == 'wallet' && !hasSufficientWalletFunds) {
+      setState(() => _selectedPaymentMethod = 'yoco');
       messengerKey.currentState?.showSnackBar(
         const SnackBar(
-          content: Text("Insufficient wallet funds for this payment method"),
-          backgroundColor: Colors.red,
+          content: Text("Insufficient wallet funds. Payment method changed to Card."),
+          backgroundColor: Colors.orange,
         ),
       );
-      return;
     }
 
+    // Show confirmation dialog for selected payment method
     final confirmed = await _showPaymentConfirmationDialog(_selectedPaymentMethod, cartTotal, walletBalance);
     if (!confirmed) return;
 
@@ -2797,10 +2995,7 @@ class _CartPageState extends State<CartPage> {
               final walletBalance = snapshot.data ?? 0.0;
               final hasSufficientWalletFunds = walletBalance >= cart.total;
               
-              if (!hasSufficientWalletFunds) {
-                return const SizedBox.shrink(); // Don't show selection if insufficient funds
-              }
-              
+              // Always show payment method selection regardless of wallet balance
               return Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
