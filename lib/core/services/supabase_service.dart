@@ -108,6 +108,7 @@ class SupabaseService {
     required String password,
     required String myReferralCode,
     String? referredBy,
+    String? name,
   }) async {
     try {
       final AuthResponse res = await _client.auth.signUp(
@@ -121,6 +122,7 @@ class SupabaseService {
           'id': res.user!.id,
           'referral_code': myReferralCode,
           'referred_by': referredBy,
+          'name': name,
           'has_purchased': false,
           'wallet_balance': 0.0,
           'stamps_count': 0,

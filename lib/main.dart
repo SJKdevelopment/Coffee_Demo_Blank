@@ -365,27 +365,69 @@ class _LoginPageState extends State<LoginPage> {
         // 1. Generate the Code
         final String myNewCode = ReferralService().generateRandomCode();
 
-        // 2. Register directly with Supabase (Including Phone Number!)
-        final AuthResponse res = await Supabase.instance.client.auth.signUp(
-        email: email,
-        password: password,
-        data: {
-        'phone_number': phone, // <--- This fixes the NULL error
-        'referral_code': myNewCode,
-        },
-      );
-
-final user = res.user;
-final success = (user != null); // If we got a user, it was a success
-
-        if (success) {
-          final user = Supabase.instance.client.auth.currentUser;
-          if (user != null) {
-            await ReferralService().linkReferralOnSignUp(
-              userId: user.id,
-              friendReferralCode: _referralController.text.trim(),
+        // 2. Register directly with Supabase (simplified to isolate issue)
+        try {
+          debugPrint("Attempting to sign up user: $email");
+          final AuthResponse res = await Supabase.instance.client.auth.signUp(
+            email: email,
+            password: password,
+            data: {
+              'phone_number': phone,
+              // Remove 'name' from auth data to avoid trigger conflicts
+            },
+          );
+          
+          debugPrint("Auth response: ${res.user?.id}, error: ${res.user?.email}");
+          
+          final user = res.user;
+          final success = (user != null);
+          
+          if (success) {
+            debugPrint("User created successfully: ${user.id}");
+            
+            // Create profile after successful auth
+            try {
+              await Supabase.instance.client.from('profiles').upsert({
+                'id': user.id,
+                'referral_code': myNewCode,
+                'referred_by': _referralController.text.trim().isEmpty ? null : _referralController.text.trim(),
+                'name': name, // Put name here instead of auth metadata
+                'has_purchased': false,
+                'wallet_balance': 0.0,
+                'stamps_count': 0,
+                'referral_count': 0,
+              });
+              debugPrint("Profile created successfully");
+            } catch (profileError) {
+              debugPrint("Profile creation error: $profileError");
+            }
+            
+            // Handle referral
+            if (_referralController.text.trim().isNotEmpty) {
+              try {
+                await ReferralService().linkReferralOnSignUp(
+                  userId: user.id,
+                  friendReferralCode: _referralController.text.trim(),
+                );
+                debugPrint("Referral linked successfully");
+              } catch (referralError) {
+                debugPrint("Referral linking error: $referralError");
+              }
+            }
+          } else {
+            debugPrint("Auth failed: No user created");
+          }
+        } catch (authError) {
+          debugPrint("Auth error: $authError");
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text("Auth Error: $authError"),
+                backgroundColor: Colors.red,
+              ),
             );
           }
+          rethrow;
         }
 
         if (mounted) {
