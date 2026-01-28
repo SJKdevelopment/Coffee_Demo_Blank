@@ -2279,7 +2279,7 @@ class _CartPageState extends State<CartPage> {
   final cart = CartManager();
   bool _isProcessing = false;
   DateTime? _scheduledPickupTime;
-  String _selectedPaymentMethod = 'auto'; // 'auto', 'wallet', 'yoco'
+  String _selectedPaymentMethod = ''; // 'wallet', 'yoco' - mandatory selection
 
   @override
   void initState() {
@@ -2323,6 +2323,17 @@ class _CartPageState extends State<CartPage> {
       return;
     }
 
+    // Validate payment method selection
+    if (_selectedPaymentMethod.isEmpty) {
+      messengerKey.currentState?.showSnackBar(
+        const SnackBar(
+          content: Text("Please select a payment method (Wallet or Card)"),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     // Get wallet balance for payment method logic
     final profileData = await Supabase.instance.client
         .from('profiles')
@@ -2334,11 +2345,19 @@ class _CartPageState extends State<CartPage> {
     double cartTotal = cart.total;
     final hasSufficientWalletFunds = walletBalance >= cartTotal;
 
-    // Show confirmation dialog if user has selected a specific payment method
-    if (hasSufficientWalletFunds && _selectedPaymentMethod != 'auto') {
-      final confirmed = await _showPaymentConfirmationDialog(_selectedPaymentMethod, cartTotal, walletBalance);
-      if (!confirmed) return;
+    // Show confirmation dialog for selected payment method
+    if (_selectedPaymentMethod == 'wallet' && !hasSufficientWalletFunds) {
+      messengerKey.currentState?.showSnackBar(
+        const SnackBar(
+          content: Text("Insufficient wallet funds for this payment method"),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
     }
+
+    final confirmed = await _showPaymentConfirmationDialog(_selectedPaymentMethod, cartTotal, walletBalance);
+    if (!confirmed) return;
 
     // Original checkout logic continues...
 
@@ -2364,34 +2383,12 @@ class _CartPageState extends State<CartPage> {
       // Payment method selection logic
       if (_selectedPaymentMethod == 'wallet') {
         // User chose wallet only
-        if (walletBalance >= cartTotal) {
-          amountFromWallet = cartTotal;
-          amountToPayYoco = 0.0;
-        } else {
-          // Insufficient wallet funds - show error
-          if (mounted) {
-            messengerKey.currentState?.showSnackBar(
-              const SnackBar(
-                content: Text("Insufficient wallet funds for this payment method"),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
-          return;
-        }
+        amountFromWallet = cartTotal;
+        amountToPayYoco = 0.0;
       } else if (_selectedPaymentMethod == 'yoco') {
         // User chose YOCO only
         amountFromWallet = 0.0;
         amountToPayYoco = cartTotal;
-      } else {
-        // Auto mode (existing logic)
-        if (walletBalance >= cartTotal) {
-          amountFromWallet = cartTotal;
-          amountToPayYoco = 0.0;
-        } else {
-          amountFromWallet = walletBalance;
-          amountToPayYoco = cartTotal - walletBalance;
-        }
       }
 
       // 1. Create the Pending Order
@@ -2823,7 +2820,7 @@ class _CartPageState extends State<CartPage> {
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          "Payment Method",
+                          "Payment Method *",
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 14,
@@ -2938,7 +2935,7 @@ class _CartPageState extends State<CartPage> {
                         ),
                       ],
                     ),
-                    if (_selectedPaymentMethod != 'auto') ...[
+                    if (_selectedPaymentMethod.isNotEmpty) ...[
                       const SizedBox(height: 8),
                       Text(
                         _selectedPaymentMethod == 'wallet'
@@ -2947,6 +2944,16 @@ class _CartPageState extends State<CartPage> {
                         style: TextStyle(
                           fontSize: 12,
                           color: theme.colorScheme.primary,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ] else ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        "Please select a payment method to continue",
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.red,
                           fontStyle: FontStyle.italic,
                         ),
                       ),
