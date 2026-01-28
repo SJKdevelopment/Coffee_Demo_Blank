@@ -361,13 +361,22 @@ class _LoginPageState extends State<LoginPage> {
           );
         }
       } else {
+        // PASTE THIS INSTEAD
+        // 1. Generate the Code
         final String myNewCode = ReferralService().generateRandomCode();
 
-        final success = await SupabaseService().registerNewUser(
-          email: email,
-          password: password,
-          myReferralCode: myNewCode,
-        );
+        // 2. Register directly with Supabase (Including Phone Number!)
+        final AuthResponse res = await Supabase.instance.client.auth.signUp(
+        email: email,
+        password: password,
+        data: {
+        'phone_number': phone, // <--- This fixes the NULL error
+        'referral_code': myNewCode,
+        },
+      );
+
+final user = res.user;
+final success = (user != null); // If we got a user, it was a success
 
         if (success) {
           final user = Supabase.instance.client.auth.currentUser;
