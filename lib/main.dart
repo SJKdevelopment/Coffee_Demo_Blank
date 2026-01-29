@@ -2519,6 +2519,7 @@ class _CartPageState extends State<CartPage> {
   bool _isProcessing = false;
   DateTime? _scheduledPickupTime;
   String _selectedPaymentMethod = ''; // 'wallet', 'yoco' - mandatory selection
+  final _specialRequestsController = TextEditingController();
 
   @override
   void initState() {
@@ -2531,6 +2532,7 @@ class _CartPageState extends State<CartPage> {
   @override
   void dispose() {
     messengerKey.currentState?.clearSnackBars();
+    _specialRequestsController.dispose();
     super.dispose();
   }
 
@@ -2641,6 +2643,9 @@ class _CartPageState extends State<CartPage> {
             'customer_name': preferredName,
             'items_summary': orderSummary,
             'scheduled_pickup_time': _scheduledPickupTime?.toIso8601String(),
+            'specifications': _specialRequestsController.text.trim().isEmpty 
+                ? null 
+                : _specialRequestsController.text.trim(),
           })
           .select()
           .single();
@@ -2930,7 +2935,7 @@ class _CartPageState extends State<CartPage> {
 
   Widget _buildCheckoutSummary(ThemeData theme, Color textColor) {
     return Container(
-      padding: const EdgeInsets.all(25),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: theme.cardColor,
         boxShadow: [
@@ -2940,16 +2945,16 @@ class _CartPageState extends State<CartPage> {
             offset: const Offset(0, -5),
           ),
         ],
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
       ),
       child: Column(
         children: [
-          // Schedule Pickup Section
+          // Schedule Pickup Section - More compact
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: Colors.amber.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(8),
               border: Border.all(color: Colors.amber.withOpacity(0.3)),
             ),
             child: Column(
@@ -2960,40 +2965,40 @@ class _CartPageState extends State<CartPage> {
                     Icon(
                       Icons.schedule,
                       color: Colors.amber.shade700,
-                      size: 20,
+                      size: 16,
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 6),
                     Text(
                       "Schedule Pickup",
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
-                        fontSize: 14,
+                        fontSize: 12,
                         color: Colors.amber.shade700,
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 8),
                 GestureDetector(
                   onTap: _selectPickupDateTime,
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
+                      horizontal: 10,
+                      vertical: 8,
                     ),
                     decoration: BoxDecoration(
                       color: theme.scaffoldBackgroundColor,
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(6),
                       border: Border.all(color: Colors.amber.withOpacity(0.5)),
                     ),
                     child: Row(
                       children: [
                         Icon(
                           Icons.access_time,
-                          size: 18,
+                          size: 16,
                           color: Colors.amber.shade700,
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 8),
                         Expanded(
                           child: Text(
                             _scheduledPickupTime == null
@@ -3003,7 +3008,7 @@ class _CartPageState extends State<CartPage> {
                               color: _scheduledPickupTime == null
                                   ? textColor.withOpacity(0.5)
                                   : textColor,
-                              fontSize: 14,
+                              fontSize: 12,
                               fontWeight: _scheduledPickupTime == null
                                   ? FontWeight.normal
                                   : FontWeight.w500,
@@ -3017,7 +3022,7 @@ class _CartPageState extends State<CartPage> {
                             },
                             child: Icon(
                               Icons.close,
-                              size: 18,
+                              size: 16,
                               color: textColor.withOpacity(0.5),
                             ),
                           ),
@@ -3028,21 +3033,19 @@ class _CartPageState extends State<CartPage> {
               ],
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 12),
           
-          // Payment Method Selection
+          // Payment Method Selection - More compact
           FutureBuilder<double>(
             future: _getWalletBalance(),
             builder: (context, snapshot) {
               final walletBalance = snapshot.data ?? 0.0;
-              final hasSufficientWalletFunds = walletBalance >= cart.total;
               
-              // Always show payment method selection regardless of wallet balance
               return Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: theme.colorScheme.surface,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: theme.colorScheme.outline.withOpacity(0.3)),
                 ),
                 child: Column(
@@ -3053,32 +3056,32 @@ class _CartPageState extends State<CartPage> {
                         Icon(
                           Icons.payment,
                           color: theme.colorScheme.primary,
-                          size: 20,
+                          size: 16,
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 6),
                         Text(
                           "Payment Method *",
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
-                            fontSize: 14,
+                            fontSize: 12,
                             color: textColor,
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 8),
                     Row(
                       children: [
                         Expanded(
                           child: GestureDetector(
                             onTap: () => setState(() => _selectedPaymentMethod = 'wallet'),
                             child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              padding: const EdgeInsets.symmetric(vertical: 8),
                               decoration: BoxDecoration(
                                 color: _selectedPaymentMethod == 'wallet'
                                     ? theme.colorScheme.primary.withOpacity(0.1)
                                     : Colors.transparent,
-                                borderRadius: BorderRadius.circular(8),
+                                borderRadius: BorderRadius.circular(6),
                                 border: Border.all(
                                   color: _selectedPaymentMethod == 'wallet'
                                       ? theme.colorScheme.primary
@@ -3092,6 +3095,7 @@ class _CartPageState extends State<CartPage> {
                                     groupValue: _selectedPaymentMethod,
                                     onChanged: (value) => setState(() => _selectedPaymentMethod = value!),
                                     activeColor: theme.colorScheme.primary,
+                                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                   ),
                                   Expanded(
                                     child: Column(
@@ -3101,13 +3105,14 @@ class _CartPageState extends State<CartPage> {
                                           "Wallet",
                                           style: TextStyle(
                                             fontWeight: FontWeight.w600,
+                                            fontSize: 12,
                                             color: textColor,
                                           ),
                                         ),
                                         Text(
-                                          "Balance: R${walletBalance.toStringAsFixed(2)}",
+                                          "R${walletBalance.toStringAsFixed(2)}",
                                           style: TextStyle(
-                                            fontSize: 12,
+                                            fontSize: 10,
                                             color: textColor.withOpacity(0.7),
                                           ),
                                         ),
@@ -3119,17 +3124,17 @@ class _CartPageState extends State<CartPage> {
                             ),
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 8),
                         Expanded(
                           child: GestureDetector(
                             onTap: () => setState(() => _selectedPaymentMethod = 'yoco'),
                             child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              padding: const EdgeInsets.symmetric(vertical: 8),
                               decoration: BoxDecoration(
                                 color: _selectedPaymentMethod == 'yoco'
                                     ? theme.colorScheme.primary.withOpacity(0.1)
                                     : Colors.transparent,
-                                borderRadius: BorderRadius.circular(8),
+                                borderRadius: BorderRadius.circular(6),
                                 border: Border.all(
                                   color: _selectedPaymentMethod == 'yoco'
                                       ? theme.colorScheme.primary
@@ -3143,6 +3148,7 @@ class _CartPageState extends State<CartPage> {
                                     groupValue: _selectedPaymentMethod,
                                     onChanged: (value) => setState(() => _selectedPaymentMethod = value!),
                                     activeColor: theme.colorScheme.primary,
+                                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                   ),
                                   Expanded(
                                     child: Column(
@@ -3152,13 +3158,14 @@ class _CartPageState extends State<CartPage> {
                                           "Card",
                                           style: TextStyle(
                                             fontWeight: FontWeight.w600,
+                                            fontSize: 12,
                                             color: textColor,
                                           ),
                                         ),
                                         Text(
-                                          "Credit/Debit Card",
+                                          "Credit/Debit",
                                           style: TextStyle(
-                                            fontSize: 12,
+                                            fontSize: 10,
                                             color: textColor.withOpacity(0.7),
                                           ),
                                         ),
@@ -3172,35 +3179,75 @@ class _CartPageState extends State<CartPage> {
                         ),
                       ],
                     ),
-                    if (_selectedPaymentMethod.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        _selectedPaymentMethod == 'wallet'
-                            ? "Payment will be made from your wallet balance"
-                            : "Payment will be made via card",
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: theme.colorScheme.primary,
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
-                    ] else ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        "Please select a payment method to continue",
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.red,
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
-                    ],
                   ],
                 ),
               );
             },
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 12),
+          
+          // Special Requests Section - More compact
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surface,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: theme.colorScheme.outline.withOpacity(0.3)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.edit_note,
+                      color: theme.colorScheme.primary,
+                      size: 16,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      "Special Requests (Optional)",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                        color: textColor,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _specialRequestsController,
+                  maxLines: 2,
+                  maxLength: 150,
+                  decoration: InputDecoration(
+                    hintText: "Special requests?",
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(6),
+                      borderSide: BorderSide(color: theme.colorScheme.outline.withOpacity(0.3)),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(6),
+                      borderSide: BorderSide(color: theme.colorScheme.outline.withOpacity(0.3)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(6),
+                      borderSide: BorderSide(color: theme.colorScheme.primary),
+                    ),
+                    filled: true,
+                    fillColor: theme.scaffoldBackgroundColor,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    isDense: true,
+                  ),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: textColor,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
           
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -3208,7 +3255,7 @@ class _CartPageState extends State<CartPage> {
               Text(
                 "Total:",
                 style: TextStyle(
-                  fontSize: 20,
+                  fontSize: 16,
                   fontWeight: FontWeight.bold,
                   color: textColor,
                 ),
@@ -3216,34 +3263,35 @@ class _CartPageState extends State<CartPage> {
               Text(
                 "R${cart.total.toStringAsFixed(2)}",
                 style: const TextStyle(
-                  fontSize: 22,
+                  fontSize: 18,
                   fontWeight: FontWeight.bold,
                   color: Color(0xFF6F4E37),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
-            height: 55,
+            height: 45,
             child: ElevatedButton(
               onPressed: _isProcessing ? null : _handleCheckout,
               style: ElevatedButton.styleFrom(
                 backgroundColor: theme.colorScheme.primary,
                 foregroundColor: theme.colorScheme.onPrimary,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(15),
+                  borderRadius: BorderRadius.circular(12),
                 ),
               ),
               child: _isProcessing
                   ? CircularProgressIndicator(
                       color: theme.colorScheme.onPrimary,
+                      strokeWidth: 2,
                     )
                   : const Text(
                       "CHECKOUT",
                       style: TextStyle(
-                        fontSize: 16,
+                        fontSize: 14,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
