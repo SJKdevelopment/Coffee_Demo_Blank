@@ -912,7 +912,7 @@ class _DashboardPageState extends State<DashboardPage> {
   final List<Widget> _pages = [
     const CoffeeMenuPage(),
     const RewardsPage(),
-    const CartPage(),
+    const CartItemsPage(),
     const ProfilePage(),
   ];
 
@@ -1381,37 +1381,19 @@ class _RewardsPageState extends State<RewardsPage> {
       final int referralCount = profile['referral_count'] ?? 0;
       
       if (existingCode != null) {
-        // Show existing code
+        // Show existing code in dialog
         _showReferralCodeDialog(existingCode, isNew: false);
         return;
       }
 
       // Generate new code if user has 10+ referrals
       if (referralCount >= 10) {
-        // Show loading dialog
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (context) => const AlertDialog(
-            content: Row(
-              children: [
-                CircularProgressIndicator(),
-                SizedBox(width: 20),
-                Text("Generating your reward code..."),
-              ],
-            ),
-          ),
-        );
-
-        // Generate new referral reward code
+        // Generate new referral reward code directly
         final String? referralRewardCode = await ReferralService().generateReferralRewardCode();
 
-        // Close loading dialog
-        if (mounted) Navigator.pop(context);
-
-        // Show new code
+        // Refresh the page to update the button state to text tile
         if (mounted && referralRewardCode != null) {
-          _showReferralCodeDialog(referralRewardCode, isNew: true);
+          setState(() {});
         }
       } else {
         // Not enough referrals
@@ -1795,31 +1777,62 @@ class _RewardsPageState extends State<RewardsPage> {
                           ),
                         ),
                         const SizedBox(height: 16),
-                        GestureDetector(
-                          onTap: () => _showReferralRewardCode(user.id),
-                          child: Container(
+                        if (hasActiveReferralCode) ...[
+                          Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 16,
-                              vertical: 8,
+                              vertical: 12,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.green.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: Colors.green.withOpacity(0.5)),
+                              color: Colors.grey.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.grey.withOpacity(0.3)),
                             ),
-                            child: Text(
-                              hasActiveReferralCode
-                                  ? "SHOW REWARD CODE"
-                                  : "GENERATE REWARD CODE",
-                              style: const TextStyle(
-                                color: Colors.green,
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 1,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.check_circle,
+                                  color: Colors.grey,
+                                  size: 16,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  "REWARD CODE GENERATED",
+                                  style: TextStyle(
+                                    color: Colors.grey,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ] else ...[
+                          GestureDetector(
+                            onTap: () => _showReferralRewardCode(user.id),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.green.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(color: Colors.green.withOpacity(0.5)),
+                              ),
+                              child: Text(
+                                "GENERATE REWARD CODE",
+                                style: const TextStyle(
+                                  color: Colors.green,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 1,
+                                ),
                               ),
                             ),
                           ),
-                        ),
+                        ],
                       ],
                     ),
                   ),
@@ -2505,16 +2518,236 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
 }
 
 // ==========================================
-// 10. CART PAGE (Payment-Validated Stamps & Notifications)
+// 10. CART ITEMS PAGE (Items List Only)
 // ==========================================
-class CartPage extends StatefulWidget {
-  const CartPage({super.key});
+class CartItemsPage extends StatefulWidget {
+  const CartItemsPage({super.key});
 
   @override
-  State<CartPage> createState() => _CartPageState();
+  State<CartItemsPage> createState() => _CartItemsPageState();
 }
 
-class _CartPageState extends State<CartPage> {
+class _CartItemsPageState extends State<CartItemsPage> {
+  final cart = CartManager();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onSurface;
+
+    return Scaffold(
+      backgroundColor: theme.scaffoldBackgroundColor,
+      appBar: AppBar(
+        title: Text("My Cart (${cart.items.length})"),
+        backgroundColor: theme.scaffoldBackgroundColor,
+        elevation: 0,
+      ),
+      body: cart.items.isEmpty
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.shopping_cart_outlined,
+                    size: 80,
+                    color: Colors.grey[400],
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    "Your cart is empty 🛍️",
+                    style: TextStyle(
+                      fontSize: 18, 
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    "Add some delicious coffee!",
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[500],
+                    ),
+                  ),
+                ],
+              ),
+            )
+          : Column(
+              children: [
+                Expanded(
+                  child: Builder(
+                    builder: (context) {
+                      final groupedItems = cart.getGroupedItems();
+                      return ListView.builder(
+                        itemCount: groupedItems.length,
+                        itemBuilder: (context, index) {
+                          final groupedItem = groupedItems[index];
+                          final quantity = groupedItem['quantity'] ?? 1;
+                          final itemTotal = groupedItem['price'] * quantity;
+                          return Card(
+                            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            elevation: 2,
+                            child: ListTile(
+                              leading: ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: Image.network(
+                                  groupedItem['image_url'],
+                                  width: 55,
+                                  height: 55,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (ctx, err, stack) =>
+                                      const Icon(Icons.coffee),
+                                ),
+                              ),
+                              title: Text(
+                                groupedItem['name'],
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: textColor,
+                                ),
+                              ),
+                              subtitle: Text(
+                                "Size: ${groupedItem['size']} | Qty: $quantity",
+                                style: TextStyle(
+                                  color: textColor.withOpacity(0.7),
+                                ),
+                              ),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Text(
+                                        "R${itemTotal.toStringAsFixed(2)}",
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 16,
+                                          color: textColor,
+                                        ),
+                                      ),
+                                      Text(
+                                        "@R${groupedItem['price'].toStringAsFixed(2)}",
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: textColor.withOpacity(0.6),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.remove_circle_outline,
+                                      color: Colors.redAccent,
+                                    ),
+                                    onPressed: () {
+                                      setState(() {
+                                        String key =
+                                            "${groupedItem['name']}_${groupedItem['size']}";
+                                        cart._items.removeWhere(
+                                          (item) =>
+                                              "${item['name']}_${item['size']}" ==
+                                              key,
+                                        );
+                                      });
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+                _buildCartSummary(theme, textColor),
+              ],
+            ),
+    );
+  }
+
+  Widget _buildCartSummary(ThemeData theme, Color textColor) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, -5),
+          ),
+        ],
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                "Total:",
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: textColor,
+                ),
+              ),
+              Text(
+                "R${cart.total.toStringAsFixed(2)}",
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF6F4E37),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            height: 45,
+            child: ElevatedButton(
+              onPressed: cart.items.isEmpty ? null : () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const CheckoutPage()),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: theme.colorScheme.primary,
+                foregroundColor: theme.colorScheme.onPrimary,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text(
+                "PROCEED TO CHECKOUT",
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ==========================================
+// 11. CHECKOUT PAGE (Scheduling & Payment)
+// ==========================================
+class CheckoutPage extends StatefulWidget {
+  const CheckoutPage({super.key});
+
+  @override
+  State<CheckoutPage> createState() => _CheckoutPageState();
+}
+
+class _CheckoutPageState extends State<CheckoutPage> {
   final cart = CartManager();
   bool _isProcessing = false;
   DateTime? _scheduledPickupTime;
@@ -2699,9 +2932,10 @@ class _CartPageState extends State<CartPage> {
               behavior: SnackBarBehavior.floating,
             ),
           );
-          Navigator.pushReplacement(
+          Navigator.pushAndRemoveUntil(
             context,
             MaterialPageRoute(builder: (context) => const DashboardPage()),
+            (route) => false,
           );
         }
       }
@@ -2834,467 +3068,439 @@ class _CartPageState extends State<CartPage> {
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      body: cart.items.isEmpty
-          ? const Center(
-              child: Text(
-                "Your cart is empty 🛍️",
-                style: TextStyle(fontSize: 18, color: Colors.grey),
+      appBar: AppBar(
+        title: Text("Checkout"),
+        backgroundColor: theme.scaffoldBackgroundColor,
+        elevation: 0,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Order Summary Section
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: theme.cardColor,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
-            )
-          : Column(
-              children: [
-                Expanded(
-                  child: Builder(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Order Summary",
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: textColor,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Builder(
                     builder: (context) {
                       final groupedItems = cart.getGroupedItems();
-                      return ListView.builder(
-                        itemCount: groupedItems.length,
-                        itemBuilder: (context, index) {
-                          final groupedItem = groupedItems[index];
+                      return Column(
+                        children: groupedItems.map((groupedItem) {
                           final quantity = groupedItem['quantity'] ?? 1;
                           final itemTotal = groupedItem['price'] * quantity;
-                          return ListTile(
-                            leading: ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: Image.network(
-                                groupedItem['image_url'],
-                                width: 55,
-                                height: 55,
-                                fit: BoxFit.cover,
-                                errorBuilder: (ctx, err, stack) =>
-                                    const Icon(Icons.coffee),
-                              ),
-                            ),
-                            title: Text(
-                              groupedItem['name'],
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: textColor,
-                              ),
-                            ),
-                            subtitle: Text(
-                              "Size: ${groupedItem['size']} | Qty: $quantity",
-                              style: TextStyle(
-                                color: textColor.withOpacity(0.7),
-                              ),
-                            ),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 4),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  children: [
-                                    Text(
-                                      "R${itemTotal.toStringAsFixed(2)}",
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16,
-                                        color: textColor,
-                                      ),
+                                Expanded(
+                                  child: Text(
+                                    "${groupedItem['name']} (${groupedItem['size']}) x$quantity",
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: textColor.withOpacity(0.8),
                                     ),
-                                    Text(
-                                      "@R${groupedItem['price'].toStringAsFixed(2)}",
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: textColor.withOpacity(0.6),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                IconButton(
-                                  icon: const Icon(
-                                    Icons.remove_circle_outline,
-                                    color: Colors.redAccent,
                                   ),
-                                  onPressed: () {
-                                    setState(() {
-                                      String key =
-                                          "${groupedItem['name']}_${groupedItem['size']}";
-                                      cart._items.removeWhere(
-                                        (item) =>
-                                            "${item['name']}_${item['size']}" ==
-                                            key,
-                                      );
-                                    });
-                                  },
+                                ),
+                                Text(
+                                  "R${itemTotal.toStringAsFixed(2)}",
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                    color: textColor,
+                                  ),
                                 ),
                               ],
                             ),
                           );
-                        },
+                        }).toList(),
                       );
                     },
                   ),
-                ),
-                _buildCheckoutSummary(theme, textColor),
-              ],
+                  const Divider(height: 20),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        "Total:",
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: textColor,
+                        ),
+                      ),
+                      Text(
+                        "R${cart.total.toStringAsFixed(2)}",
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF6F4E37),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
+            const SizedBox(height: 16),
+
+            // Schedule Pickup Section
+            _buildSchedulePickupSection(theme, textColor),
+            const SizedBox(height: 16),
+
+            // Payment Method Selection
+            _buildPaymentMethodSection(theme, textColor),
+            const SizedBox(height: 16),
+
+            // Special Requests Section
+            _buildSpecialRequestsSection(theme, textColor),
+            const SizedBox(height: 24),
+
+            // Checkout Button
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton(
+                onPressed: _isProcessing ? null : _handleCheckout,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: theme.colorScheme.primary,
+                  foregroundColor: theme.colorScheme.onPrimary,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: _isProcessing
+                    ? CircularProgressIndicator(
+                        color: theme.colorScheme.onPrimary,
+                        strokeWidth: 2,
+                      )
+                    : const Text(
+                        "PLACE ORDER",
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
-  Widget _buildCheckoutSummary(ThemeData theme, Color textColor) {
+  Widget _buildSchedulePickupSection(ThemeData theme, Color textColor) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: theme.cardColor,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, -5),
-          ),
-        ],
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        color: Colors.amber.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.amber.withOpacity(0.3)),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Schedule Pickup Section - More compact
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.amber.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.amber.withOpacity(0.3)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      Icons.schedule,
-                      color: Colors.amber.shade700,
-                      size: 16,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      "Schedule Pickup",
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                        color: Colors.amber.shade700,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                GestureDetector(
-                  onTap: _selectPickupDateTime,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: theme.scaffoldBackgroundColor,
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: Colors.amber.withOpacity(0.5)),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.access_time,
-                          size: 16,
-                          color: Colors.amber.shade700,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            _scheduledPickupTime == null
-                                ? "Tap to schedule pickup time"
-                                : _formatPickupTime(_scheduledPickupTime!),
-                            style: TextStyle(
-                              color: _scheduledPickupTime == null
-                                  ? textColor.withOpacity(0.5)
-                                  : textColor,
-                              fontSize: 12,
-                              fontWeight: _scheduledPickupTime == null
-                                  ? FontWeight.normal
-                                  : FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                        if (_scheduledPickupTime != null)
-                          GestureDetector(
-                            onTap: () {
-                              setState(() => _scheduledPickupTime = null);
-                            },
-                            child: Icon(
-                              Icons.close,
-                              size: 16,
-                              color: textColor.withOpacity(0.5),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          
-          // Payment Method Selection - More compact
-          FutureBuilder<double>(
-            future: _getWalletBalance(),
-            builder: (context, snapshot) {
-              final walletBalance = snapshot.data ?? 0.0;
-              
-              return Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surface,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: theme.colorScheme.outline.withOpacity(0.3)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.payment,
-                          color: theme.colorScheme.primary,
-                          size: 16,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          "Payment Method *",
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                            color: textColor,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: () => setState(() => _selectedPaymentMethod = 'wallet'),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 8),
-                              decoration: BoxDecoration(
-                                color: _selectedPaymentMethod == 'wallet'
-                                    ? theme.colorScheme.primary.withOpacity(0.1)
-                                    : Colors.transparent,
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(
-                                  color: _selectedPaymentMethod == 'wallet'
-                                      ? theme.colorScheme.primary
-                                      : theme.colorScheme.outline.withOpacity(0.3),
-                                ),
-                              ),
-                              child: Row(
-                                children: [
-                                  Radio<String>(
-                                    value: 'wallet',
-                                    groupValue: _selectedPaymentMethod,
-                                    onChanged: (value) => setState(() => _selectedPaymentMethod = value!),
-                                    activeColor: theme.colorScheme.primary,
-                                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                  ),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          "Wallet",
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.w600,
-                                            fontSize: 12,
-                                            color: textColor,
-                                          ),
-                                        ),
-                                        Text(
-                                          "R${walletBalance.toStringAsFixed(2)}",
-                                          style: TextStyle(
-                                            fontSize: 10,
-                                            color: textColor.withOpacity(0.7),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: () => setState(() => _selectedPaymentMethod = 'yoco'),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 8),
-                              decoration: BoxDecoration(
-                                color: _selectedPaymentMethod == 'yoco'
-                                    ? theme.colorScheme.primary.withOpacity(0.1)
-                                    : Colors.transparent,
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(
-                                  color: _selectedPaymentMethod == 'yoco'
-                                      ? theme.colorScheme.primary
-                                      : theme.colorScheme.outline.withOpacity(0.3),
-                                ),
-                              ),
-                              child: Row(
-                                children: [
-                                  Radio<String>(
-                                    value: 'yoco',
-                                    groupValue: _selectedPaymentMethod,
-                                    onChanged: (value) => setState(() => _selectedPaymentMethod = value!),
-                                    activeColor: theme.colorScheme.primary,
-                                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                  ),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          "Card",
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.w600,
-                                            fontSize: 12,
-                                            color: textColor,
-                                          ),
-                                        ),
-                                        Text(
-                                          "Credit/Debit",
-                                          style: TextStyle(
-                                            fontSize: 10,
-                                            color: textColor.withOpacity(0.7),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-          const SizedBox(height: 12),
-          
-          // Special Requests Section - More compact
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surface,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: theme.colorScheme.outline.withOpacity(0.3)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      Icons.edit_note,
-                      color: theme.colorScheme.primary,
-                      size: 16,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      "Special Requests (Optional)",
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                        color: textColor,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: _specialRequestsController,
-                  maxLines: 2,
-                  maxLength: 150,
-                  decoration: InputDecoration(
-                    hintText: "Special requests?",
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(6),
-                      borderSide: BorderSide(color: theme.colorScheme.outline.withOpacity(0.3)),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(6),
-                      borderSide: BorderSide(color: theme.colorScheme.outline.withOpacity(0.3)),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(6),
-                      borderSide: BorderSide(color: theme.colorScheme.primary),
-                    ),
-                    filled: true,
-                    fillColor: theme.scaffoldBackgroundColor,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    isDense: true,
-                  ),
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: textColor,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                "Total:",
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: textColor,
-                ),
+              Icon(
+                Icons.schedule,
+                color: Colors.amber.shade700,
+                size: 20,
               ),
+              const SizedBox(width: 8),
               Text(
-                "R${cart.total.toStringAsFixed(2)}",
-                style: const TextStyle(
-                  fontSize: 18,
+                "Schedule Pickup",
+                style: TextStyle(
                   fontWeight: FontWeight.bold,
-                  color: Color(0xFF6F4E37),
+                  fontSize: 16,
+                  color: Colors.amber.shade700,
                 ),
               ),
             ],
           ),
           const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            height: 45,
-            child: ElevatedButton(
-              onPressed: _isProcessing ? null : _handleCheckout,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: theme.colorScheme.primary,
-                foregroundColor: theme.colorScheme.onPrimary,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+          GestureDetector(
+            onTap: _selectPickupDateTime,
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: theme.scaffoldBackgroundColor,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.amber.withOpacity(0.5)),
               ),
-              child: _isProcessing
-                  ? CircularProgressIndicator(
-                      color: theme.colorScheme.onPrimary,
-                      strokeWidth: 2,
-                    )
-                  : const Text(
-                      "CHECKOUT",
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.access_time,
+                    color: Colors.amber.shade700,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      _scheduledPickupTime == null
+                          ? "Tap to schedule pickup time"
+                          : _formatPickupTime(_scheduledPickupTime!),
                       style: TextStyle(
+                        color: _scheduledPickupTime == null
+                            ? textColor.withOpacity(0.5)
+                            : textColor,
                         fontSize: 14,
-                        fontWeight: FontWeight.bold,
+                        fontWeight: _scheduledPickupTime == null
+                            ? FontWeight.normal
+                            : FontWeight.w500,
                       ),
                     ),
+                  ),
+                  if (_scheduledPickupTime != null)
+                    GestureDetector(
+                      onTap: () {
+                        setState(() => _scheduledPickupTime = null);
+                      },
+                      child: Icon(
+                        Icons.close,
+                        color: textColor.withOpacity(0.5),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPaymentMethodSection(ThemeData theme, Color textColor) {
+    return FutureBuilder<double>(
+      future: _getWalletBalance(),
+      builder: (context, snapshot) {
+        final walletBalance = snapshot.data ?? 0.0;
+        
+        return Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: theme.cardColor,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: theme.colorScheme.outline.withOpacity(0.3)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.payment,
+                    color: theme.colorScheme.primary,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    "Payment Method *",
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: textColor,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(() => _selectedPaymentMethod = 'wallet'),
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: _selectedPaymentMethod == 'wallet'
+                              ? theme.colorScheme.primary.withOpacity(0.1)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: _selectedPaymentMethod == 'wallet'
+                                ? theme.colorScheme.primary
+                                : theme.colorScheme.outline.withOpacity(0.3),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Radio<String>(
+                              value: 'wallet',
+                              groupValue: _selectedPaymentMethod,
+                              onChanged: (value) => setState(() => _selectedPaymentMethod = value!),
+                              activeColor: theme.colorScheme.primary,
+                            ),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    "Wallet",
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 14,
+                                      color: textColor,
+                                    ),
+                                  ),
+                                  Text(
+                                    "R${walletBalance.toStringAsFixed(2)}",
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: textColor.withOpacity(0.7),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(() => _selectedPaymentMethod = 'yoco'),
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: _selectedPaymentMethod == 'yoco'
+                              ? theme.colorScheme.primary.withOpacity(0.1)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: _selectedPaymentMethod == 'yoco'
+                                ? theme.colorScheme.primary
+                                : theme.colorScheme.outline.withOpacity(0.3),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Radio<String>(
+                              value: 'yoco',
+                              groupValue: _selectedPaymentMethod,
+                              onChanged: (value) => setState(() => _selectedPaymentMethod = value!),
+                              activeColor: theme.colorScheme.primary,
+                            ),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    "Card",
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 14,
+                                      color: textColor,
+                                    ),
+                                  ),
+                                  Text(
+                                    "Credit/Debit",
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: textColor.withOpacity(0.7),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildSpecialRequestsSection(ThemeData theme, Color textColor) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: theme.colorScheme.outline.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.edit_note,
+                color: theme.colorScheme.primary,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                "Special Requests (Optional)",
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  color: textColor,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: _specialRequestsController,
+            maxLines: 3,
+            maxLength: 150,
+            decoration: InputDecoration(
+              hintText: "Any special requests for your order?",
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(color: theme.colorScheme.outline.withOpacity(0.3)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(color: theme.colorScheme.outline.withOpacity(0.3)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(color: theme.colorScheme.primary),
+              ),
+              filled: true,
+              fillColor: theme.scaffoldBackgroundColor,
+              contentPadding: const EdgeInsets.all(12),
+            ),
+            style: TextStyle(
+              fontSize: 14,
+              color: textColor,
             ),
           ),
         ],
